@@ -1,0 +1,130 @@
+version: '3.8'
+
+services:
+  # MySQL Database for Authentication
+  mysql:
+    image: mysql:8.0
+    container_name: ongc-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${SQL_DATABASE:-ongc_auth_prod}
+      MYSQL_USER: ${SQL_USER:-ongc_user}
+      MYSQL_PASSWORD: ${SQL_PASSWORD:-ongc_password}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./server/scripts/setup-database.sql:/docker-entrypoint-initdb.d/setup.sql
+    ports:
+      - "3307:3306"  # Changed from 3306 to 3307
+    networks:
+      - ongc-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # MongoDB Database for Applicant Data
+  mongodb:
+    image: mongo:6.0
+    container_name: ongc-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: ${MONGODB_DATABASE:-ongc-internship-prod}
+    volumes:
+      - mongodb_data:/data/db
+    ports:
+      - "27018:27017"  # Changed from 27017 to 27018
+    networks:
+      - ongc-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      timeout: 20s
+      retries: 10
+
+  # Backend Server
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: ongc-server
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - JWT_SECRET=${JWT_SECRET}
+      - SQL_HOST=mysql
+      - SQL_PORT=3306
+      - SQL_DATABASE=${SQL_DATABASE:-ongc_auth_prod}
+      - SQL_USER=${SQL_USER:-ongc_user}
+      - SQL_PASSWORD=${SQL_PASSWORD:-ongc_password}
+      - MONGODB_URI=mongodb://mongodb:27017/${MONGODB_DATABASE:-ongc-internship-prod}
+      - EMAIL_HOST=${EMAIL_HOST}
+      - EMAIL_PORT=${EMAIL_PORT:-587}
+      - EMAIL_USER=${EMAIL_USER}
+      - EMAIL_PASS=${EMAIL_PASS}
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3000}
+      - TRUST_PROXY=true
+      - RATE_LIMIT_WINDOW_MS=900000
+      - RATE_LIMIT_MAX_REQUESTS=100
+      - MAX_FILE_SIZE=10485760
+      - LOG_LEVEL=info
+      - LOG_FILE=/app/logs/app.log
+    ports:
+      - "3001:3001"
+    volumes:
+      - server_logs:/app/logs
+      - server_uploads:/app/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    networks:
+      - ongc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/health"]
+      timeout: 10s
+      retries: 5
+
+  # Frontend (if needed as separate service)
+  frontend:
+    build:
+      context: ./Frontend
+      dockerfile: Dockerfile
+    container_name: ongc-frontend
+    restart: unless-stopped
+    environment:
+      - VITE_API_URL=http://localhost:3001
+    ports:
+      - "3000:3000"
+    depends_on:
+      - server
+    networks:
+      - ongc-network
+
+  # Nginx Reverse Proxy (Optional)
+  nginx:
+    image: nginx:alpine
+    container_name: ongc-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - server
+      - frontend
+    networks:
+      - ongc-network
+
+volumes:
+  mysql_data:
+  mongodb_data:
+  server_logs:
+  server_uploads:
+
+networks:
+  ongc-network:
+    driver: bridge 
