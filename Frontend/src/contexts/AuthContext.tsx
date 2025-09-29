@@ -44,7 +44,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const verifyToken = async (authToken: string) => {
     try {
-      const response = await fetch('/api/auth/verify', {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+      const response = await fetch(`${API_BASE_URL}/auth/verify`, {
         headers: {
           'Authorization': `Bearer ${authToken}`,
           'Content-Type': 'application/json'
@@ -64,7 +65,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       setIsLoading(true);
       
-      const response = await fetch('/api/auth/login', {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
