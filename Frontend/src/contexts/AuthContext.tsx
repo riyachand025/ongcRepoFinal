@@ -44,7 +44,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const verifyToken = async (authToken: string) => {
     try {
-      const API_BASE_URL = 'https://ongcrepofinal.onrender.com/api'; // Hardcoded for debugging
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
       const response = await fetch(`${API_BASE_URL}/auth/verify`, {
         headers: {
           'Authorization': `Bearer ${authToken}`,
@@ -65,7 +65,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       setIsLoading(true);
       
-      const API_BASE_URL = 'https://ongcrepofinal.onrender.com/api'; // Hardcoded for debugging
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
       const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
         headers: {

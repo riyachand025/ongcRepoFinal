@@ -58,18 +58,18 @@ const limiter = rateLimit({
 
 app.use(limiter);
 
-// Temporarily disabled rate limiting for authentication routes during debugging
-// const authLimiter = rateLimit({
-//   windowMs: 15 * 60 * 1000, // 15 minutes
-//   max: 20, // Increased from 5 to 20 for testing
-//   message: {
-//     error: 'Too many authentication attempts, please try again later.'
-//   },
-//   standardHeaders: true,
-//   legacyHeaders: false,
-// });
+// Authentication rate limiting with reasonable production limits
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 attempts per 15 minutes (reasonable for production)
+  message: {
+    error: 'Too many authentication attempts, please try again later.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
-// app.use('/api/auth', authLimiter); // Temporarily disabled
+app.use('/api/auth', authLimiter);
 
 // Compression
 app.use(compression());
