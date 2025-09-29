@@ -1,7 +1,7 @@
 import { Applicant } from '../types/applicant';
 
-// Use environment variable for API URL, fallback to relative URL for development
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+// Use environment variable for API URL, fallback to hardcoded URL if not set
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://ongcrepofinal.onrender.com/api';
 
 // Helper function to get auth token
 const getAuthToken = (): string | null => {
