@@ -13,13 +13,10 @@ const rateLimit = require('express-rate-limit');
 const compression = require('compression');
 const morgan = require('morgan');
 
-// SQL Database imports
-const { testConnection, syncDatabase } = require('./config/database');
-const { initializeSQLUsers } = require('./utils/authHelpers');
-const { router: authRouter, authenticateToken, requireRole } = require('./routes/auth');
-
 // MongoDB imports
 const Applicant = require('./models/Applicant');
+const { initializeMongoUsers } = require('./utils/authHelpers');
+const { router: authRouter, authenticateToken, requireRole } = require('./routes/auth');
 
 dotenv.config();
 
@@ -186,24 +183,7 @@ const createEmailTransporter = () => {
   return transporter;
 };
 
-// Define schemas and models (always available)
-const userSchema = new mongoose.Schema({
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  name: { type: String, required: true },
-  role: { 
-    type: String, 
-    enum: ['hr_manager', 'admin', 'viewer'], 
-    default: 'hr_manager' 
-  },
-  department: { type: String, default: 'Human Resources' },
-  employeeId: { type: String, required: true, unique: true },
-  isActive: { type: Boolean, default: true },
-  lastLogin: Date,
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
-});
-
+// Define Applicant schema
 const applicantSchema = new mongoose.Schema({
   submissionTimestamp: Date,
   email: { type: String, required: true, unique: true },
@@ -251,33 +231,7 @@ const applicantSchema = new mongoose.Schema({
   processedBy: String
 });
 
-const User = mongoose.model('User', userSchema);
-
-// SQL Database connection
-const connectSQLDB = async () => {
-  try {
-    console.log('🗄️  Initializing SQL database connection...');
-    
-    // First, create database if it doesn't exist
-    const { createDatabaseIfNotExists } = require('./config/database');
-    await createDatabaseIfNotExists();
-    
-    // Then test connection
-    const isConnected = await testConnection();
-    if (isConnected) {
-      await syncDatabase();
-      await initializeSQLUsers();
-      console.log('✅ SQL Database setup completed');
-      return true;
-    }
-    return false;
-  } catch (error) {
-    console.error('❌ SQL Database connection failed:', error.message);
-    return false;
-  }
-};
-
-// MongoDB connection with fallback to in-memory storage
+// MongoDB connection
 const connectDB = async () => {
   try {
     const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/ongc-internship';
@@ -287,7 +241,7 @@ const connectDB = async () => {
     await mongoose.connect(mongoUri, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 5000 // 5 second timeout
+      serverSelectionTimeoutMS: 10000 // 10 second timeout for Atlas
     });
     console.log('✅ Connected to MongoDB successfully');
     
@@ -300,60 +254,14 @@ const connectDB = async () => {
     const applicantCount = await Applicant.countDocuments();
     console.log(`👥 Total Applicants in MongoDB: ${applicantCount}`);
     
+    // Initialize default users
     await initializeMongoUsers();
   } catch (error) {
-    console.warn('⚠️  MongoDB connection failed, using in-memory storage:', error.message);
-    console.log('💾 Server running with in-memory storage (data will not persist)');
-    await initializeInMemoryUsers();
+    console.error('❌ MongoDB connection failed:', error.message);
+    throw error; // Let the server startup fail if MongoDB is not available
   }
 };
 
-// Initialize users for MongoDB
-const initializeMongoUsers = async () => {
-  try {
-    const userCount = await User.countDocuments();
-    
-    if (userCount === 0) {
-      const defaultUsers = [
-        {
-          email: 'hr@ongc.co.in',
-          password: await bcrypt.hash('password123', 10),
-          name: 'HR Manager',
-          role: 'hr_manager',
-          department: 'Human Resources',
-          employeeId: 'HR001',
-          isActive: true
-        },
-        {
-          email: 'admin@ongc.co.in',
-          password: await bcrypt.hash('admin123', 10),
-          name: 'System Administrator',
-          role: 'admin',
-          department: 'IT',
-          employeeId: 'IT001',
-          isActive: true
-        }
-      ];
-      
-      await User.insertMany(defaultUsers);
-      console.log('Default users created successfully');
-    }
-  } catch (error) {
-    console.error('Error initializing MongoDB users:', error);
-  }
-};
-
-// Initialize users for in-memory storage
-const initializeInMemoryUsers = async () => {
-  try {
-    // Hash passwords for in-memory users
-    users[0].password = await bcrypt.hash('password123', 10);
-    users[1].password = await bcrypt.hash('admin123', 10);
-    console.log('In-memory users initialized successfully');
-  } catch (error) {
-    console.error('Error initializing in-memory users:', error);
-  }
-};
 
 // Note: authenticateToken and requireRole are imported from routes/auth.js
 //const fs = require('fs/promises');
@@ -493,17 +401,21 @@ app.post('/api/send-email', authenticateToken, async (req, res) => {
     console.log('🔧 Creating email transporter...');
     const transporter = createEmailTransporter();
     
-    // Verify transporter configuration
-    try {
-      console.log('🔍 Verifying email transporter...');
-      await transporter.verify();
-      console.log('✅ Email transporter verified successfully.');
-    } catch (verifyError) {
-      console.error('❌ Email transporter verification failed:', verifyError);
-      return res.status(500).json({
-        success: false,
-        message: 'Email service configuration error. Please check your email credentials.'
-      });
+    // Verify transporter configuration (skip in development with demo credentials)
+    if (process.env.EMAIL_USER !== 'demo@example.com') {
+      try {
+        console.log('🔍 Verifying email transporter...');
+        await transporter.verify();
+        console.log('✅ Email transporter verified successfully.');
+      } catch (verifyError) {
+        console.error('❌ Email transporter verification failed:', verifyError);
+        return res.status(500).json({
+          success: false,
+          message: 'Email service configuration error. Please check your email credentials.'
+        });
+      }
+    } else {
+      console.log('📧 Development mode: Skipping email transporter verification (demo credentials)');
     }
     
     // Email options
@@ -594,8 +506,32 @@ app.post('/api/send-email', authenticateToken, async (req, res) => {
       }
     }
     
-    // Send email
-    const info = await transporter.sendMail(mailOptions);
+    // Send email (or simulate in development mode)
+    let info;
+    if (process.env.EMAIL_USER === 'demo@example.com') {
+      console.log('📧 Development mode: Simulating email send (demo credentials)');
+      console.log('📝 Simulated email details:');
+      console.log('   📮 To:', to);
+      console.log('   📝 Subject:', subject);
+      console.log('   📋 Content length:', html ? html.length : text.length, 'characters');
+      console.log('   📎 Attachments:', mailOptions.attachments.length);
+      
+      // Simulate successful email sending
+      info = {
+        messageId: `dev-${Date.now()}@localhost`,
+        accepted: [to],
+        rejected: [],
+        pending: [],
+        response: '250 OK: Email simulated in development mode'
+      };
+      
+      // Add a small delay to simulate sending time
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      console.log('✅ Email simulation completed successfully');
+    } else {
+      console.log('📧 Production mode: Sending actual email');
+      info = await transporter.sendMail(mailOptions);
+    }
     
     console.log('Email sent successfully:', {
       messageId: info.messageId,
@@ -652,14 +588,18 @@ app.post('/api/send-bulk-emails', authenticateToken, async (req, res) => {
     
     const transporter = createEmailTransporter();
     
-    // Verify transporter
-    try {
-      await transporter.verify();
-    } catch (verifyError) {
-      return res.status(500).json({
-        success: false,
-        message: 'Email service configuration error'
-      });
+    // Verify transporter (skip in development with demo credentials)
+    if (process.env.EMAIL_USER !== 'demo@example.com') {
+      try {
+        await transporter.verify();
+      } catch (verifyError) {
+        return res.status(500).json({
+          success: false,
+          message: 'Email service configuration error'
+        });
+      }
+    } else {
+      console.log('📧 Bulk email: Development mode detected (demo credentials)');
     }
     
     const results = [];
@@ -721,7 +661,21 @@ app.post('/api/send-bulk-emails', authenticateToken, async (req, res) => {
             }
           }
           
-          const info = await transporter.sendMail(mailOptions);
+          let info;
+          if (process.env.EMAIL_USER === 'demo@example.com') {
+            console.log(`📧 Simulating bulk email to: ${emailData.to}`);
+            info = {
+              messageId: `bulk-dev-${Date.now()}@localhost`,
+              accepted: [emailData.to],
+              rejected: [],
+              pending: [],
+              response: '250 OK: Bulk email simulated in development mode'
+            };
+            // Small delay to simulate sending
+            await new Promise(resolve => setTimeout(resolve, 500));
+          } else {
+            info = await transporter.sendMail(mailOptions);
+          }
           
           return {
             to: emailData.to,
@@ -789,14 +743,14 @@ app.get('/api/approved', authenticateToken, (req, res) => {
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  const mongoStatus = mongoose.connection.readyState === 1 ? 'MongoDB Connected' : 'In-Memory Storage';
+  const mongoStatus = mongoose.connection.readyState === 1 ? 'MongoDB Connected' : 'Disconnected';
   const emailConfigured = !!(process.env.EMAIL_USER && process.env.EMAIL_PASS);
   
   res.json({ 
     status: 'OK', 
     timestamp: new Date().toISOString(),
     mongodb: mongoStatus,
-    sql: 'Available for Authentication',
+    database: 'MongoDB Only',
     email: emailConfigured ? 'Configured' : 'Not Configured'
   });
 });
@@ -829,16 +783,20 @@ app.post('/api/test-email', async (req, res) => {
     // Create transporter
     const transporter = createEmailTransporter();
     
-    // Verify transporter configuration
-    try {
-      await transporter.verify();
-      console.log('✅ Email transporter verified successfully.');
-    } catch (verifyError) {
-      console.error('❌ Email transporter verification failed:', verifyError);
-      return res.status(500).json({
-        success: false,
-        message: 'Email service configuration error. Please check your email credentials.'
-      });
+    // Verify transporter configuration (skip in development with demo credentials)
+    if (process.env.EMAIL_USER !== 'demo@example.com') {
+      try {
+        await transporter.verify();
+        console.log('✅ Email transporter verified successfully.');
+      } catch (verifyError) {
+        console.error('❌ Email transporter verification failed:', verifyError);
+        return res.status(500).json({
+          success: false,
+          message: 'Email service configuration error. Please check your email credentials.'
+        });
+      }
+    } else {
+      console.log('📧 Test email: Development mode detected (demo credentials)');
     }
     
     // Email options
@@ -850,8 +808,23 @@ app.post('/api/test-email', async (req, res) => {
       text: html.replace(/<[^>]*>/g, '') // Strip HTML tags for text version
     };
     
-    // Send email
-    const info = await transporter.sendMail(mailOptions);
+    // Send email (or simulate in development mode)
+    let info;
+    if (process.env.EMAIL_USER === 'demo@example.com') {
+      console.log('📧 Development mode: Simulating test email send');
+      console.log('   📮 To:', to);
+      console.log('   📝 Subject:', subject);
+      info = {
+        messageId: `test-dev-${Date.now()}@localhost`,
+        accepted: [to],
+        rejected: [],
+        pending: [],
+        response: '250 OK: Test email simulated in development mode'
+      };
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    } else {
+      info = await transporter.sendMail(mailOptions);
+    }
     
     console.log('✅ Test email sent successfully:', {
       messageId: info.messageId,
@@ -908,13 +881,10 @@ app.use((error, req, res, next) => {
   });
 });
 
-// Connect to databases and start server
+// Connect to database and start server
 const startServer = async () => {
   try {
-    // Connect to SQL database for authentication
-    await connectSQLDB();
-    
-    // Connect to MongoDB for applicant data
+    // Connect to MongoDB for all data (authentication and applicants)
     await connectDB();
     
     const server = app.listen(PORT, () => {
@@ -925,7 +895,7 @@ const startServer = async () => {
       console.log('   HR Manager: hr@ongc.co.in / password123');
       console.log('   Admin: admin@ongc.co.in / admin123');
       console.log('   Viewer: viewer@ongc.co.in / viewer123');
-      console.log('📝 Note: MongoDB handles applicant data, SQL handles authentication');
+      console.log('📝 Note: MongoDB handles all data (authentication and applicants)');
     });
 
     // Graceful shutdown

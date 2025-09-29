@@ -4,8 +4,10 @@
   "description": "Backend server for ONGC Internship ATS",
   "main": "index.js",
   "scripts": {
-    "start": "npm run setup-mysql && node index.js",
-    "dev": "npm run setup-mysql && nodemon index.js",
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "start-with-mysql": "npm run setup-mysql && node index.js",
+    "dev-with-mysql": "npm run setup-mysql && nodemon index.js",
     "setup-db": "node scripts/setup.js",
     "setup-mysql": "./scripts/setup-mysql.sh"
   },

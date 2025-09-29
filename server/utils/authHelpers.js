@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const SQLUser = require('../models/User');
+const MongoUser = require('../models/MongoUser');
 
 // Generate JWT token
 const generateToken = (userId, role) => {
@@ -36,17 +36,65 @@ const verifyToken = (token) => {
   }
 };
 
-// Find user by email (SQL database)
+// In-memory users fallback
+const inMemoryUsers = [
+  {
+    id: 1,
+    email: 'hr@ongc.co.in',
+    password: '$2b$10$NHhbmFCEsnJutk8NubYA.Or4pM34U1ALpT.u6txSu9gB2hM4LWwCa', // password123
+    name: 'HR Manager',
+    role: 'hr_manager',
+    department: 'Human Resources',
+    employeeId: 'HR001',
+    isActive: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    comparePassword: async function(candidatePassword) {
+      const bcrypt = require('bcryptjs');
+      return await bcrypt.compare(candidatePassword, this.password);
+    },
+    toJSON: function() {
+      const values = Object.assign({}, this);
+      delete values.password;
+      delete values.comparePassword;
+      return values;
+    }
+  },
+  {
+    id: 2,
+    email: 'admin@ongc.co.in',
+    password: '$2b$10$2usD6VX2KHtnboRzgx4NzOQrvaz8QTGilN038fkt8pSHxAflpgema', // admin123
+    name: 'System Administrator',
+    role: 'admin',
+    department: 'IT',
+    employeeId: 'IT001',
+    isActive: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    comparePassword: async function(candidatePassword) {
+      const bcrypt = require('bcryptjs');
+      return await bcrypt.compare(candidatePassword, this.password);
+    },
+    toJSON: function() {
+      const values = Object.assign({}, this);
+      delete values.password;
+      delete values.comparePassword;
+      return values;
+    }
+  }
+];
+
+// Find user by email (MongoDB)
 const findUserByEmail = async (email) => {
   console.log('🔍 [USER] Finding user by email:', email);
   
   try {
-    const user = await SQLUser.findByEmail(email);
-    console.log('👤 [USER] User found:', user ? 'Yes' : 'No');
+    const user = await MongoUser.findByEmail(email);
+    console.log('👤 [USER] User found in MongoDB:', user ? 'Yes' : 'No');
     
     if (user) {
       console.log('👤 [USER] User details:', {
-        id: user.id,
+        id: user._id,
         email: user.email,
         role: user.role,
         isActive: user.isActive,
@@ -56,22 +104,22 @@ const findUserByEmail = async (email) => {
     
     return user;
   } catch (error) {
-    console.error('❌ [USER] Error finding user by email:', error);
+    console.error('❌ [USER] Error finding user by email in MongoDB:', error);
     return null;
   }
 };
 
-// Find user by ID (SQL database)
+// Find user by ID (MongoDB)
 const findUserById = async (id) => {
   console.log('🔍 [USER] Finding user by ID:', id);
   
   try {
-    const user = await SQLUser.findById(id);
-    console.log('👤 [USER] User found:', user ? 'Yes' : 'No');
+    const user = await MongoUser.findById(id);
+    console.log('👤 [USER] User found in MongoDB:', user ? 'Yes' : 'No');
     
     if (user) {
       console.log('👤 [USER] User details:', {
-        id: user.id,
+        id: user._id,
         email: user.email,
         role: user.role,
         isActive: user.isActive
@@ -80,12 +128,12 @@ const findUserById = async (id) => {
     
     return user;
   } catch (error) {
-    console.error('❌ [USER] Error finding user by ID:', error);
+    console.error('❌ [USER] Error finding user by ID in MongoDB:', error);
     return null;
   }
 };
 
-// Create new user (SQL database)
+// Create new user (MongoDB)
 const createUser = async (userData) => {
   console.log('👤 [USER] Creating new user');
   console.log('📝 [USER] User data:', {
@@ -97,9 +145,10 @@ const createUser = async (userData) => {
   });
   
   try {
-    const user = await SQLUser.create(userData);
+    const user = new MongoUser(userData);
+    await user.save();
     console.log('✅ [USER] User created successfully:', {
-      id: user.id,
+      id: user._id,
       email: user.email,
       role: user.role
     });
@@ -110,29 +159,29 @@ const createUser = async (userData) => {
   }
 };
 
-// Update user (SQL database)
+// Update user (MongoDB)
 const updateUser = async (id, updateData) => {
   console.log('📝 [USER] Updating user ID:', id);
   console.log('📝 [USER] Update data:', updateData);
   
   try {
-    const user = await SQLUser.findById(id);
+    const user = await MongoUser.findById(id);
     if (!user) {
-      console.log('❌ [USER] User not found for update');
+      console.log('❌ [USER] User not found for update in MongoDB');
       return null;
     }
     
     console.log('👤 [USER] Current user state:', {
-      id: user.id,
+      id: user._id,
       email: user.email,
       role: user.role,
       isActive: user.isActive
     });
     
-    const updatedUser = await user.update(updateData);
-    console.log('✅ [USER] User updated successfully');
+    const updatedUser = await MongoUser.findByIdAndUpdate(id, updateData, { new: true });
+    console.log('✅ [USER] User updated successfully in MongoDB');
     console.log('👤 [USER] Updated user state:', {
-      id: updatedUser.id,
+      id: updatedUser._id,
       email: updatedUser.email,
       role: updatedUser.role,
       isActive: updatedUser.isActive
@@ -140,14 +189,14 @@ const updateUser = async (id, updateData) => {
     
     return updatedUser;
   } catch (error) {
-    console.error('❌ [USER] Error updating user:', error);
+    console.error('❌ [USER] Error updating user in MongoDB:', error);
     throw error;
   }
 };
 
-// Initialize default users in SQL database
-const initializeSQLUsers = async () => {
-  console.log('👥 [INIT] Initializing SQL users');
+// Initialize default users in MongoDB
+const initializeMongoUsers = async () => {
+  console.log('👥 [INIT] Initializing MongoDB users');
   
   try {
     const defaultUsers = [
@@ -195,23 +244,9 @@ const initializeSQLUsers = async () => {
       }
     }
     
-    console.log('✅ [INIT] SQL Users initialization completed');
+    console.log('✅ [INIT] MongoDB Users initialization completed');
   } catch (error) {
-    console.error('❌ [INIT] Error initializing SQL users:', error);
-  }
-};
-
-// Check if SQL database is connected
-const isSQLConnected = async () => {
-  console.log('🔍 [DB] Checking SQL database connection');
-  
-  try {
-    await SQLUser.sequelize.authenticate();
-    console.log('✅ [DB] SQL database connection successful');
-    return true;
-  } catch (error) {
-    console.log('❌ [DB] SQL database connection failed:', error.message);
-    return false;
+    console.error('❌ [INIT] Error initializing MongoDB users:', error);
   }
 };
 
@@ -222,6 +257,5 @@ module.exports = {
   findUserById,
   createUser,
   updateUser,
-  initializeSQLUsers,
-  isSQLConnected
-}; 
+  initializeMongoUsers
+};

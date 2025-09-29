@@ -6,8 +6,7 @@ const {
   findUserByEmail, 
   findUserById, 
   createUser, 
-  updateUser,
-  isSQLConnected 
+  updateUser
 } = require('../utils/authHelpers');
 
 // Middleware for authentication
@@ -49,13 +48,15 @@ const authenticateToken = async (req, res, next) => {
     }
 
     console.log('✅ [AUTH] User authenticated successfully:', {
-      id: user.id,
+      id: user._id,
       email: user.email,
       role: user.role,
       isActive: user.isActive
     });
     
     req.user = user.toJSON();
+    // For MongoDB, update the ID field to match expected format
+    req.user.id = user._id;
     console.log('📤 [AUTH] User data attached to request');
     next();
   } catch (error) {
@@ -135,7 +136,7 @@ router.post('/login', async (req, res) => {
     }
     
     console.log('👤 [LOGIN] User details:', {
-      id: user.id,
+      id: user._id,
       email: user.email,
       role: user.role,
       isActive: user.isActive
@@ -168,14 +169,15 @@ router.post('/login', async (req, res) => {
     
     console.log('✅ [LOGIN] Password validated successfully');
     console.log('📅 [LOGIN] Updating last login timestamp...');
-    await updateUser(user.id, { lastLogin: new Date() });
+    await updateUser(user._id, { lastLogin: new Date() });
     console.log('📅 [LOGIN] Last login updated');
     
     console.log('🎫 [LOGIN] Generating JWT token...');
-    const token = generateToken(user.id, user.role);
+    const token = generateToken(user._id, user.role);
     console.log('🎫 [LOGIN] Token generated successfully');
     
     const userData = user.toJSON();
+    userData.id = user._id; // Ensure ID is set for frontend compatibility
     console.log('📤 [LOGIN] Preparing response with user data (password excluded)');
     
     console.log('✅ [LOGIN] Login successful for user:', {
@@ -277,15 +279,18 @@ router.post('/register', authenticateToken, requireRole(['admin']), async (req, 
     });
     
     console.log('✅ [REGISTER] User created successfully:', {
-      id: newUser.id,
+      id: newUser._id,
       email: newUser.email,
       role: newUser.role
     });
     
+    const userData = newUser.toJSON();
+    userData.id = newUser._id; // Ensure ID is set for frontend compatibility
+    
     res.status(201).json({
       success: true,
       message: 'User created successfully',
-      user: newUser.toJSON()
+      user: userData
     });
     
   } catch (error) {
@@ -317,10 +322,13 @@ router.put('/profile', authenticateToken, async (req, res) => {
     const updatedUser = await updateUser(userId, updateData);
     console.log('✅ [PROFILE_UPDATE] Profile updated successfully');
     
+    const userData = updatedUser.toJSON();
+    userData.id = updatedUser._id; // Ensure ID is set for frontend compatibility
+    
     res.json({
       success: true,
       message: 'Profile updated successfully',
-      user: updatedUser.toJSON()
+      user: userData
     });
     
   } catch (error) {
@@ -386,18 +394,22 @@ router.get('/users', authenticateToken, requireRole(['admin']), async (req, res)
   console.log('👤 [USERS] Request by admin:', req.user.email);
   
   try {
-    const SQLUser = require('../models/User');
+    const MongoUser = require('../models/MongoUser');
     console.log('🔍 [USERS] Fetching all users from database...');
-    const users = await SQLUser.findAll({
-      attributes: { exclude: ['password'] },
-      order: [['createdAt', 'DESC']]
-    });
+    const users = await MongoUser.find({}, { password: 0, passwordResetToken: 0, passwordResetExpires: 0 })
+      .sort({ createdAt: -1 });
     
     console.log('✅ [USERS] Found', users.length, 'users');
     
+    const userData = users.map(user => {
+      const userObj = user.toJSON();
+      userObj.id = user._id; // Ensure ID is set for frontend compatibility
+      return userObj;
+    });
+    
     res.json({
       success: true,
-      users: users.map(user => user.toJSON())
+      users: userData
     });
     
   } catch (error) {
@@ -433,10 +445,13 @@ router.put('/users/:id/toggle-status', authenticateToken, requireRole(['admin'])
     const updatedUser = await updateUser(userId, { isActive: !user.isActive });
     console.log('✅ [TOGGLE] User status updated to:', updatedUser.isActive ? 'Active' : 'Inactive');
     
+    const userData = updatedUser.toJSON();
+    userData.id = updatedUser._id; // Ensure ID is set for frontend compatibility
+    
     res.json({
       success: true,
       message: `User ${updatedUser.isActive ? 'activated' : 'deactivated'} successfully`,
-      user: updatedUser.toJSON()
+      user: userData
     });
     
   } catch (error) {
