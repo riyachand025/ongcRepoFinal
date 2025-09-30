@@ -178,7 +178,10 @@ const createEmailTransporter = () => {
     },
     tls: {
       rejectUnauthorized: false
-    }
+    },
+    connectionTimeout: parseInt(process.env.EMAIL_CONNECTION_TIMEOUT_MS || '5000'),
+    greetingTimeout: parseInt(process.env.EMAIL_GREETING_TIMEOUT_MS || '5000'),
+    socketTimeout: parseInt(process.env.EMAIL_SOCKET_TIMEOUT_MS || '10000')
   });
   
   console.log('✅ Email transporter configured successfully.');
@@ -406,8 +409,10 @@ app.post('/api/send-email', authenticateToken, async (req, res) => {
     console.log('🔧 Creating email transporter...');
     const transporter = createEmailTransporter();
     
-    // Verify transporter configuration (skip in development with demo credentials)
-    if (process.env.EMAIL_USER !== 'demo@example.com') {
+    // Verify transporter configuration unless SIMULATE_EMAIL is enabled or demo user
+    if (process.env.SIMULATE_EMAIL === 'true' || process.env.EMAIL_USER === 'demo@example.com') {
+      console.log('📧 Email simulation enabled - skipping transporter.verify()');
+    } else {
       try {
         console.log('🔍 Verifying email transporter...');
         await transporter.verify();
@@ -419,8 +424,6 @@ app.post('/api/send-email', authenticateToken, async (req, res) => {
           message: 'Email service configuration error. Please check your email credentials.'
         });
       }
-    } else {
-      console.log('📧 Development mode: Skipping email transporter verification (demo credentials)');
     }
     
     // Email options
@@ -496,7 +499,7 @@ app.post('/api/send-email', authenticateToken, async (req, res) => {
     
     // Send email (or simulate in development mode)
     let info;
-    if (process.env.EMAIL_USER === 'demo@example.com') {
+    if (process.env.SIMULATE_EMAIL === 'true' || process.env.EMAIL_USER === 'demo@example.com') {
       console.log('📧 Development mode: Simulating email send (demo credentials)');
       console.log('📝 Simulated email details:');
       console.log('   📮 To:', to);
