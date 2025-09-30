@@ -425,7 +425,10 @@ app.post('/api/send-email', authenticateToken, async (req, res) => {
 
         // Email options
         const mailOptions = {
-            from: process.env.EMAIL_USER,
+            from: {
+                email: process.env.EMAIL_USER,
+                name: "ONGC Dehradun - SAIL"
+            },
             to: to,
             subject: subject,
             html: html,
