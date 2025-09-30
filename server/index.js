@@ -45,10 +45,10 @@ app.use(helmet({
   }
 }));
 
-// Rate limiting
+// Rate limiting (global)
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 500,
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 1000,
   message: {
     error: 'Too many requests from this IP, please try again later.'
   },
@@ -58,19 +58,20 @@ const limiter = rateLimit({
 
 app.use(limiter);
 
-// Temporarily disabled auth rate limiting - too restrictive during development
-// TODO: Re-enable with higher limits or IP-based exemptions for development
-// const authLimiter = rateLimit({
-//   windowMs: 15 * 60 * 1000, // 15 minutes
-//   max: 10, // 10 attempts per 15 minutes (reasonable for production)
-//   message: {
-//     error: 'Too many authentication attempts, please try again later.'
-//   },
-//   standardHeaders: true,
-//   legacyHeaders: false,
-// });
+// Authentication-specific rate limiting (more generous and configurable)
+const authLimiter = rateLimit({
+  windowMs: parseInt(process.env.AUTH_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // default 15 min
+  max: parseInt(process.env.AUTH_RATE_LIMIT_MAX_REQUESTS) || 50, // default 50 attempts/window
+  message: {
+    error: 'Too many authentication attempts, please try again later.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true, // successful logins don’t count against the limit
+});
 
-// app.use('/api/auth', authLimiter); // Temporarily disabled
+// Apply limiter only to the login endpoint to avoid blocking verify/profile
+app.use('/api/auth/login', authLimiter);
 
 // Compression
 app.use(compression());
