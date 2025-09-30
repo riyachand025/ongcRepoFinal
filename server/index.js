@@ -377,9 +377,15 @@ const fillPDFForm = async (applicantData, registrationNumber) => {
         return null;
     }
 };
+
 // Email sending endpoint
 app.post('/api/send-email', authenticateToken, async (req, res) => {
   try {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields: to, subject, and html/text content'
+    });
+    
     const { to, subject, html, text, attachTemplate, applicantData } = req.body;
     console.log(applicantData);
     console.log('📧 Email sending request received:');
