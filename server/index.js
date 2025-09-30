@@ -184,6 +184,9 @@ const createEmailTransporter = () => {
   return transporter;
 };
 
+// Export for use in other route modules (e.g., applicants routes)
+module.exports.createEmailTransporter = createEmailTransporter;
+
 // Define Applicant schema
 const applicantSchema = new mongoose.Schema({
   submissionTimestamp: Date,
@@ -431,66 +434,49 @@ app.post('/api/send-email', authenticateToken, async (req, res) => {
     console.log('LMAO');
     // Add PDF template attachment if requested
     if (attachTemplate) {
-          console.log('LMAO2');
-      // Check if we have applicant data to fill the form
+      // Attempt to generate a filled PDF using provided applicant data
       let pdfBuffer = null;
-      
-      // Try to extract applicant data from email content for form filling
-      //if (html && html.includes('Registration number is:')) {
-            console.log('LMAO3');
 
-            try {
-          // Extract registration number from email content
-          const regMatch = html.match(/SAIL-\d{4}-\d{4}/);
-          const registrationNumber = regMatch ? regMatch[0] : '';
-          console.log('ApplicantData', applicantData);
-          // Create mock applicant data from email recipient
-          // In a real implementation, you'd pass the full applicant data
-          const data = {
-            name: applicantData.name,
-            age: applicantData.age,
-            gender: applicantData.gender,
-            category: applicantData.category,
-            reg: registrationNumber,
-            address: applicantData.address,
-            mobile: applicantData.mobileNo,
-            email: applicantData.email,
-            father: applicantData.fatherMotherName,
-            father_occupation: applicantData.fatherMotherOccupation,
-            course: applicantData.areasOfTraining,
-            semester: applicantData.presentSemester,
-            cgpa: applicantData.lastSemesterSGPA,
-            percentage: applicantData.percentageIn10Plus2,
-            college: applicantData.presentInstitute
+      try {
+        // Extract registration number from the email HTML if present
+        const regMatch = html ? html.match(/SAIL-\d{4}-\d{4}/) : null;
+        const registrationNumber = regMatch ? regMatch[0] : (req.body.registrationNumber || '');
 
+        // Build data object safely
+        const data = applicantData ? {
+          name: applicantData.name,
+          age: applicantData.age,
+          gender: applicantData.gender,
+          category: applicantData.category,
+          reg: registrationNumber,
+          address: applicantData.address,
+          mobile: applicantData.mobileNo,
+          email: applicantData.email,
+          father: applicantData.fatherMotherName,
+          father_occupation: applicantData.fatherMotherOccupation,
+          course: applicantData.areasOfTraining,
+          semester: applicantData.presentSemester,
+          cgpa: applicantData.lastSemesterSGPA,
+          percentage: applicantData.percentageIn10Plus2,
+          college: applicantData.presentInstitute
+        } : null;
 
+        if (data) {
+          pdfBuffer = await fillPDFForm(data, registrationNumber);
         }
-                console.log('LMAO4');
+      } catch (error) {
+        console.error('Error creating filled PDF:', error);
+      }
 
-          // Fill the PDF form
-              
-
-              pdfBuffer = await fillPDFForm(data, registrationNumber);
-              console.log('LMAO5');
-        } catch (error) {
-          console.error('Error creating filled PDF:', error);
-        }
-      //}
-      
       if (pdfBuffer) {
-            console.log('LMAO6');
-
-        // Use filled PDF
         mailOptions.attachments.push({
-          filename: 'ONGC_Internship_Application_Form2_Filled.pdf',
+          filename: 'ONGC_Internship_Application_Form_Filled.pdf',
           content: pdfBuffer,
-
           contentType: 'application/pdf'
         });
       } else {
         // Fallback to blank template
         const templatePath = path.join(__dirname, 'templates', 'template.pdf');
-        
         try {
           if (fs.existsSync(templatePath)) {
             mailOptions.attachments.push({

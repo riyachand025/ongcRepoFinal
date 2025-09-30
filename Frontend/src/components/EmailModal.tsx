@@ -228,7 +228,8 @@ hereby cautioned that any dissemination, distribution or copying of this communi
             ? `ONGC Dehradun - Application Acknowledgment (Reg: ${generateRegistrationNumber(currentSerial)})`
             : `ONGC Dehradun - Training Confirmation (Reg: ${generateRegistrationNumber(currentSerial)})`;
 
-        const response = await fetch('/api/send-email', {
+        const apiBase = import.meta.env.VITE_API_BASE_URL || '/api';
+        const response = await fetch(`${apiBase}/send-email`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
