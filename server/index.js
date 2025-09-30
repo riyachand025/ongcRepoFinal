@@ -166,7 +166,7 @@ const createEmailTransporter = () => {
   console.log(`🔌 Port: ${process.env.EMAIL_PORT || 587}`);
   console.log(`👤 User: ${process.env.EMAIL_USER || 'Not configured'}`);
   console.log(`🔐 Password: ${process.env.EMAIL_PASS ? '***configured***' : 'Not configured'}`);
-  
+  console.log("LMAO1111");
   // Use real email transporter (no more mock for development)
   const transporter = nodemailer.createTransport({
     host: process.env.EMAIL_HOST || 'smtp.gmail.com',
@@ -183,7 +183,7 @@ const createEmailTransporter = () => {
     greetingTimeout: parseInt(process.env.EMAIL_GREETING_TIMEOUT_MS || '5000'),
     socketTimeout: parseInt(process.env.EMAIL_SOCKET_TIMEOUT_MS || '10000')
   });
-  
+  console.log("LMAO22222");
   console.log('✅ Email transporter configured successfully.');
   return transporter;
 };
@@ -381,11 +381,6 @@ const fillPDFForm = async (applicantData, registrationNumber) => {
 // Email sending endpoint
 app.post('/api/send-email', authenticateToken, async (req, res) => {
   try {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing required fields: to, subject, and html/text content'
-    });
-    
     const { to, subject, html, text, attachTemplate, applicantData } = req.body;
     console.log(applicantData);
     console.log('📧 Email sending request received:');
@@ -444,7 +439,7 @@ app.post('/api/send-email', authenticateToken, async (req, res) => {
     console.log('LMAO');
     // Add PDF template attachment if requested
     if (attachTemplate) {
-      // Attempt to generate a filled PDF using provided applicant data
+      // Attempt to generate a filled PDF using the provided applicant data
       let pdfBuffer = null;
 
       try {
